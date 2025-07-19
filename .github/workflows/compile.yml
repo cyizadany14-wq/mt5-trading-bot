@@ -13,43 +13,72 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       
-    - name: Set up MetaTrader 5
+    - name: Verify MetaEditor exists
+      id: verify-mt
       run: |
-        # Use reliable download URL from MetaQuotes
-        $url = "https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe"
+        # Check for existing MT5 installation
+        $mt5Path = "C:\Program Files\MetaTrader 5"
+        $editorPath = "$mt5Path\metaeditor64.exe"
+        
+        if (Test-Path $editorPath) {
+            Write-Host "✅ Found existing MetaEditor: $editorPath"
+            echo "MT5_PATH=$mt5Path" | Out-File -FilePath $env:GITHUB_ENV -Append
+            echo "MQL5_PATH=$mt5Path\MQL5" | Out-File -FilePath $env:GITHUB_ENV -Append
+            echo "exists=true" >> $env:GITHUB_OUTPUT
+        } else {
+            Write-Host "❌ MetaEditor not found at $editorPath"
+            echo "exists=false" >> $env:GITHUB_OUTPUT
+        }
+        
+    - name: Download MT5 (if needed)
+      if: steps.verify-mt.outputs.exists == 'false'
+      run: |
+        Write-Host "Downloading MT5 portable version..."
+        
+        # Use GitHub-hosted mirror
+        $url = "https://github.com/EA31337/MT-Platforms/releases/download/5.0.0.2361/mt5-2361.exe"
         $output = "$env:GITHUB_WORKSPACE\mt5setup.exe"
-        Write-Host "Downloading MT5 from official MetaQuotes CDN..."
         
-        # Use TLS 1.2 security protocol
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        # Download using GitHub API with retries
+        $retryCount = 0
+        $maxRetries = 3
         
-        # Download with progress and retries
-        $WebClient = New-Object System.Net.WebClient
-        $WebClient.DownloadFile($url, $output)
-        
-        if (-not (Test-Path $output)) {
-            Write-Host "Trying alternative download URL..."
-            $altUrl = "https://download.mql5.com/cdn/web/2060/mt5setup.exe"
-            $WebClient.DownloadFile($altUrl, $output)
+        while ($retryCount -lt $maxRetries) {
+            try {
+                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                $WebClient = New-Object System.Net.WebClient
+                $WebClient.DownloadFile($url, $output)
+                
+                if (Test-Path $output) {
+                    Write-Host "✅ MT5 installer downloaded"
+                    break
+                }
+            } catch {
+                Write-Host "Download attempt $($retryCount+1) failed: $_"
+            }
+            $retryCount++
+            Start-Sleep -Seconds 2
         }
         
         if (-not (Test-Path $output)) {
-            Write-Error "❌ Failed to download MT5 installer"
+            Write-Error "❌ Failed to download MT5 after $maxRetries attempts"
             exit 1
         }
-        Write-Host "✅ MT5 installer downloaded successfully"
         
-        # Install MT5 silently
-        Write-Host "Installing MT5..."
-        Start-Process -FilePath $output -ArgumentList "/S" -Wait -NoNewWindow
+        # Install MT5 to custom directory
+        $mt5Path = "$env:GITHUB_WORKSPACE\MT5"
+        New-Item -ItemType Directory -Path $mt5Path -Force | Out-Null
+        
+        Write-Host "Installing MT5 to $mt5Path..."
+        Start-Process -FilePath $output -ArgumentList "/portable /silent /dir=`"$mt5Path`"" -Wait -NoNewWindow
         
         # Verify installation
-        $mt5Path = "C:\Program Files\MetaTrader 5"
-        if (-not (Test-Path "$mt5Path\metaeditor64.exe")) {
+        $editorPath = "$mt5Path\metaeditor64.exe"
+        if (-not (Test-Path $editorPath)) {
             Write-Error "❌ MT5 installation failed - metaeditor not found"
             exit 1
         }
-        Write-Host "✅ MT5 installed successfully"
+        Write-Host "✅ MT5 portable installation complete"
         
         # Set environment variables
         echo "MT5_PATH=$mt5Path" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -59,9 +88,10 @@ jobs:
       run: |
         $editorPath = "${{ env.MT5_PATH }}\metaeditor64.exe"
         $sourcePath = "${{ github.workspace }}\Experts\InverseFVG_Trend_Strategy.mq5"
+        $includePath = "${{ github.workspace }}\include"
         
         Write-Host "Compiling EA: $sourcePath"
-        & "$editorPath" /compile:"$sourcePath" /log /inc:"${{ github.workspace }}\include"
+        & "$editorPath" /compile:"$sourcePath" /log /inc:"$includePath"
         
         # Verify output
         $ex5Path = "${{ env.MQL5_PATH }}\Experts\InverseFVG_Trend_Strategy.ex5"
