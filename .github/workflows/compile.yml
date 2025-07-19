@@ -11,48 +11,75 @@ jobs:
     runs-on: windows-latest
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4  # Updated to v4
+      uses: actions/checkout@v4
       
     - name: Set up MetaTrader 5
       run: |
-        # Download MT5 portable version
-        $url = "https://download.mql5.com/cdn/web/2060/mt5setup.exe"
+        # Use reliable MT5 download URL
+        $url = "https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe"
         $output = "$env:GITHUB_WORKSPACE\mt5setup.exe"
-        Invoke-WebRequest -Uri $url -OutFile $output
+        Write-Host "Downloading MT5 from: $url"
+        
+        # Download with retry logic
+        $retryCount = 0
+        $maxRetries = 3
+        while ($retryCount -lt $maxRetries) {
+            try {
+                Invoke-WebRequest -Uri $url -OutFile $output -UserAgent "Mozilla/5.0"
+                if (Test-Path $output) {
+                    Write-Host "Download successful"
+                    break
+                }
+            } catch {
+                Write-Host "Download attempt $($retryCount+1) failed: $_"
+            }
+            $retryCount++
+            Start-Sleep -Seconds 5
+        }
+        
+        if (-not (Test-Path $output)) {
+            Write-Error "Failed to download MT5 after $maxRetries attempts"
+            exit 1
+        }
         
         # Install MT5 silently
+        Write-Host "Installing MT5..."
         Start-Process -FilePath $output -ArgumentList "/S" -Wait
         
         # Verify installation
         $mt5Path = "C:\Program Files\MetaTrader 5"
         if (-not (Test-Path "$mt5Path\metaeditor64.exe")) {
-            Write-Error "MT5 installation failed"
+            Write-Error "MT5 installation failed - metaeditor not found"
             exit 1
         }
         
         # Set environment variables
         echo "MT5_PATH=$mt5Path" | Out-File -FilePath $env:GITHUB_ENV -Append
         echo "MQL5_PATH=$mt5Path\MQL5" | Out-File -FilePath $env:GITHUB_ENV -Append
+        Write-Host "MT5 installed successfully"
         
     - name: Compile EA
       run: |
         $editorPath = "${{ env.MT5_PATH }}\metaeditor64.exe"
         $sourcePath = "${{ github.workspace }}\Experts\InverseFVG_Trend_Strategy.mq5"
         
-        # Run compilation
+        Write-Host "Compiling: $sourcePath"
         & "$editorPath" /compile:"$sourcePath" /log /inc:"${{ github.workspace }}\include"
         
         # Verify output
         $ex5Path = "${{ env.MQL5_PATH }}\Experts\InverseFVG_Trend_Strategy.ex5"
         if (-not (Test-Path $ex5Path)) {
             Write-Error "Compilation failed: $ex5Path not found"
-            Get-Content "$env:TEMP\metaeditor.log"
+            # Show compilation log for debugging
+            if (Test-Path "$env:TEMP\metaeditor.log") {
+                Get-Content "$env:TEMP\metaeditor.log"
+            }
             exit 1
         }
         Write-Host "Successfully compiled: $ex5Path"
         
     - name: Upload artifacts
-      uses: actions/upload-artifact@v4  # Updated to v4
+      uses: actions/upload-artifact@v4
       with:
         name: Compiled_EA
         path: ${{ env.MQL5_PATH }}\Experts\InverseFVG_Trend_Strategy.ex5
