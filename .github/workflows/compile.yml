@@ -1,15 +1,17 @@
-name: Compile EA
+name: Compile InverseFVG Bot
 on: [push]
 jobs:
   compile:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Compile
+      
+      - name: Compile EA
         run: |
           "C:\Program Files\MetaTrader 5\metaeditor.exe" /compile:Smartphone_FVG_Bot/Experts/InverseFVG_Final.mq5
+          
       - name: Upload EX5
-        uses: actions/upload-artifact@v4  # CHANGED FROM v3 TO v4
+        uses: actions/upload-artifact@v4  # CORRECTED VERSION
         with:
           name: InverseFVG_Final.ex5
           path: Smartphone_FVG_Bot/Experts/InverseFVG_Final.ex5
