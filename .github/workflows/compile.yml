@@ -1,0 +1,15 @@
+name: Compile EA
+on: [push]
+jobs:
+  compile:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile
+        run: |
+          "C:\Program Files\MetaTrader 5\metaeditor.exe" /compile:Smartphone_FVG_Bot/Experts/InverseFVG_Complete.mq5
+      - name: Upload EX5
+        uses: actions/upload-artifact@v3
+        with:
+          name: InverseFVG_Complete.ex5
+          path: Smartphone_FVG_Bot/Experts/InverseFVG_Complete.ex5
