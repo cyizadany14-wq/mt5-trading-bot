@@ -1,35 +1,52 @@
-name: Compile InverseFVG Bot
-on: [push]
+name: Compile MQL5 Project
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
 jobs:
   compile:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v3
       
-      - name: Verify Files
-        run: |
-          Write-Host "Repository contents:"
-          Get-ChildItem -Recurse
-          
-          if (Test-Path "Smartphone_FVG_Bot/Experts/InverseFVG_Final.mq5") {
-            Write-Host "✅ EA file found"
-          } else {
-            Write-Error "❌ EA file missing"
-          }
-          
-          $mtPath = "C:\Program Files\MetaTrader 5\metaeditor.exe"
-          if (Test-Path $mtPath) {
-            Write-Host "✅ MetaEditor found"
-          } else {
-            Write-Error "❌ MetaEditor not found at $mtPath"
-          }
-      
-      - name: Compile EA
-        run: |
-          & "C:\Program Files\MetaTrader 5\metaeditor.exe" /compile:"Smartphone_FVG_Bot/Experts/InverseFVG_Final.mq5"
-          
-      - name: Upload EX5
-        uses: actions/upload-artifact@v4
-        with:
-          name: InverseFVG_Final.ex5
-          path: Smartphone_FVG_Bot/Experts/InverseFVG_Final.ex5
+    - name: Set up MetaTrader 5
+      run: |
+        # Download MT5 portable version
+        $url = "https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe"
+        $output = "$env:GITHUB_WORKSPACE\mt5setup.exe"
+        Invoke-WebRequest -Uri $url -OutFile $output
+        
+        # Install MT5 silently
+        Start-Process -FilePath $output -ArgumentList "/S" -Wait
+        
+        # Set environment variables
+        $mt5Path = "C:\Program Files\MetaTrader 5"
+        echo "MT5_PATH=$mt5Path" | Out-File -FilePath $env:GITHUB_ENV -Append
+        echo "MQL5_PATH=$mt5Path\MQL5" | Out-File -FilePath $env:GITHUB_ENV -Append
+        
+    - name: Compile InverseFVG_Trend_Strategy
+      uses: erm2000/mql5_compile_action@v1.1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        path: Experts/InverseFVG_Trend_Strategy.mq5
+        mt_version: "5.00"
+        compiler_path: "${{ env.MT5_PATH }}\\metaeditor64.exe"
+        
+    - name: Verify compilation
+      run: |
+        $ex4Path = "${{ env.MQL5_PATH }}\Experts\InverseFVG_Trend_Strategy.ex5"
+        if (-not (Test-Path $ex4Path)) {
+            Write-Error "Compilation failed: $ex4Path not found"
+            exit 1
+        }
+        Write-Host "Successfully compiled: $ex4Path"
+        
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: Compiled_EX5_Files
+        path: ${{ env.MQL5_PATH }}\Experts\*.ex5
