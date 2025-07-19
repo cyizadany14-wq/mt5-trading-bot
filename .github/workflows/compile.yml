@@ -15,68 +15,65 @@ jobs:
       
     - name: Set up MetaTrader 5
       run: |
-        # Use reliable MT5 download URL
+        # Use reliable download URL from MetaQuotes
         $url = "https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe"
         $output = "$env:GITHUB_WORKSPACE\mt5setup.exe"
-        Write-Host "Downloading MT5 from: $url"
+        Write-Host "Downloading MT5 from official MetaQuotes CDN..."
         
-        # Download with retry logic
-        $retryCount = 0
-        $maxRetries = 3
-        while ($retryCount -lt $maxRetries) {
-            try {
-                Invoke-WebRequest -Uri $url -OutFile $output -UserAgent "Mozilla/5.0"
-                if (Test-Path $output) {
-                    Write-Host "Download successful"
-                    break
-                }
-            } catch {
-                Write-Host "Download attempt $($retryCount+1) failed: $_"
-            }
-            $retryCount++
-            Start-Sleep -Seconds 5
+        # Use TLS 1.2 security protocol
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        
+        # Download with progress and retries
+        $WebClient = New-Object System.Net.WebClient
+        $WebClient.DownloadFile($url, $output)
+        
+        if (-not (Test-Path $output)) {
+            Write-Host "Trying alternative download URL..."
+            $altUrl = "https://download.mql5.com/cdn/web/2060/mt5setup.exe"
+            $WebClient.DownloadFile($altUrl, $output)
         }
         
         if (-not (Test-Path $output)) {
-            Write-Error "Failed to download MT5 after $maxRetries attempts"
+            Write-Error "❌ Failed to download MT5 installer"
             exit 1
         }
+        Write-Host "✅ MT5 installer downloaded successfully"
         
         # Install MT5 silently
         Write-Host "Installing MT5..."
-        Start-Process -FilePath $output -ArgumentList "/S" -Wait
+        Start-Process -FilePath $output -ArgumentList "/S" -Wait -NoNewWindow
         
         # Verify installation
         $mt5Path = "C:\Program Files\MetaTrader 5"
         if (-not (Test-Path "$mt5Path\metaeditor64.exe")) {
-            Write-Error "MT5 installation failed - metaeditor not found"
+            Write-Error "❌ MT5 installation failed - metaeditor not found"
             exit 1
         }
+        Write-Host "✅ MT5 installed successfully"
         
         # Set environment variables
         echo "MT5_PATH=$mt5Path" | Out-File -FilePath $env:GITHUB_ENV -Append
         echo "MQL5_PATH=$mt5Path\MQL5" | Out-File -FilePath $env:GITHUB_ENV -Append
-        Write-Host "MT5 installed successfully"
         
     - name: Compile EA
       run: |
         $editorPath = "${{ env.MT5_PATH }}\metaeditor64.exe"
         $sourcePath = "${{ github.workspace }}\Experts\InverseFVG_Trend_Strategy.mq5"
         
-        Write-Host "Compiling: $sourcePath"
+        Write-Host "Compiling EA: $sourcePath"
         & "$editorPath" /compile:"$sourcePath" /log /inc:"${{ github.workspace }}\include"
         
         # Verify output
         $ex5Path = "${{ env.MQL5_PATH }}\Experts\InverseFVG_Trend_Strategy.ex5"
         if (-not (Test-Path $ex5Path)) {
-            Write-Error "Compilation failed: $ex5Path not found"
+            Write-Error "❌ Compilation failed: $ex5Path not found"
             # Show compilation log for debugging
             if (Test-Path "$env:TEMP\metaeditor.log") {
                 Get-Content "$env:TEMP\metaeditor.log"
             }
             exit 1
         }
-        Write-Host "Successfully compiled: $ex5Path"
+        Write-Host "✅ Successfully compiled: $ex5Path"
         
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
