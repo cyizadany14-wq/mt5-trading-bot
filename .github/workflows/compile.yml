@@ -11,42 +11,48 @@ jobs:
     runs-on: windows-latest
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4  # Updated to v4
       
     - name: Set up MetaTrader 5
       run: |
         # Download MT5 portable version
-        $url = "https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe"
+        $url = "https://download.mql5.com/cdn/web/2060/mt5setup.exe"
         $output = "$env:GITHUB_WORKSPACE\mt5setup.exe"
         Invoke-WebRequest -Uri $url -OutFile $output
         
         # Install MT5 silently
         Start-Process -FilePath $output -ArgumentList "/S" -Wait
         
-        # Set environment variables
+        # Verify installation
         $mt5Path = "C:\Program Files\MetaTrader 5"
+        if (-not (Test-Path "$mt5Path\metaeditor64.exe")) {
+            Write-Error "MT5 installation failed"
+            exit 1
+        }
+        
+        # Set environment variables
         echo "MT5_PATH=$mt5Path" | Out-File -FilePath $env:GITHUB_ENV -Append
         echo "MQL5_PATH=$mt5Path\MQL5" | Out-File -FilePath $env:GITHUB_ENV -Append
         
-    - name: Compile InverseFVG_Trend_Strategy
-      uses: erm2000/mql5_compile_action@v1.1
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        path: Experts/InverseFVG_Trend_Strategy.mq5
-        mt_version: "5.00"
-        compiler_path: "${{ env.MT5_PATH }}\\metaeditor64.exe"
-        
-    - name: Verify compilation
+    - name: Compile EA
       run: |
-        $ex4Path = "${{ env.MQL5_PATH }}\Experts\InverseFVG_Trend_Strategy.ex5"
-        if (-not (Test-Path $ex4Path)) {
-            Write-Error "Compilation failed: $ex4Path not found"
+        $editorPath = "${{ env.MT5_PATH }}\metaeditor64.exe"
+        $sourcePath = "${{ github.workspace }}\Experts\InverseFVG_Trend_Strategy.mq5"
+        
+        # Run compilation
+        & "$editorPath" /compile:"$sourcePath" /log /inc:"${{ github.workspace }}\include"
+        
+        # Verify output
+        $ex5Path = "${{ env.MQL5_PATH }}\Experts\InverseFVG_Trend_Strategy.ex5"
+        if (-not (Test-Path $ex5Path)) {
+            Write-Error "Compilation failed: $ex5Path not found"
+            Get-Content "$env:TEMP\metaeditor.log"
             exit 1
         }
-        Write-Host "Successfully compiled: $ex4Path"
+        Write-Host "Successfully compiled: $ex5Path"
         
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4  # Updated to v4
       with:
-        name: Compiled_EX5_Files
-        path: ${{ env.MQL5_PATH }}\Experts\*.ex5
+        name: Compiled_EA
+        path: ${{ env.MQL5_PATH }}\Experts\InverseFVG_Trend_Strategy.ex5
