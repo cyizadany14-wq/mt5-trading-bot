@@ -6,12 +6,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Verify Files
+        run: |
+          Write-Host "Repository contents:"
+          Get-ChildItem -Recurse
+          
+          if (Test-Path "Smartphone_FVG_Bot/Experts/InverseFVG_Final.mq5") {
+            Write-Host "✅ EA file found"
+          } else {
+            Write-Error "❌ EA file missing"
+          }
+          
+          $mtPath = "C:\Program Files\MetaTrader 5\metaeditor.exe"
+          if (Test-Path $mtPath) {
+            Write-Host "✅ MetaEditor found"
+          } else {
+            Write-Error "❌ MetaEditor not found at $mtPath"
+          }
+      
       - name: Compile EA
         run: |
-          "C:\Program Files\MetaTrader5\metaeditor.exe"/compile:Smartphone_FVG_Bot/Experts/InverseFVG_Final.mq5
+          & "C:\Program Files\MetaTrader 5\metaeditor.exe" /compile:"Smartphone_FVG_Bot/Experts/InverseFVG_Final.mq5"
           
       - name: Upload EX5
-        uses: actions/upload-artifact@v4  # CORRECTED VERSION
+        uses: actions/upload-artifact@v4
         with:
           name: InverseFVG_Final.ex5
           path: Smartphone_FVG_Bot/Experts/InverseFVG_Final.ex5
