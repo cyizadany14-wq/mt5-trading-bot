@@ -13,17 +13,48 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       
-    - name: Compile using GitHub Action
-      uses: erm2000/mql5-compile-action@v1.1
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        file: Experts/InverseFVG_Trend_Strategy.mq5
-        includes: include
+    - name: Download MetaEditor
+      run: |
+        # Download standalone MetaEditor (no MT5 required)
+        $url = "https://github.com/EA31337/MetaEditor/releases/download/2361/metaeditor.exe"
+        $editorPath = "$env:GITHUB_WORKSPACE\metaeditor.exe"
         
-    - name: Upload artifact
+        Write-Host "Downloading standalone MetaEditor..."
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        (New-Object System.Net.WebClient).DownloadFile($url, $editorPath)
+        
+        if (-not (Test-Path $editorPath)) {
+            Write-Error "❌ Failed to download MetaEditor"
+            exit 1
+        }
+        Write-Host "✅ MetaEditor downloaded successfully"
+        
+        # Set environment variable
+        echo "EDITOR_PATH=$editorPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+        
+    - name: Compile EA
+      run: |
+        $editorPath = "${{ env.EDITOR_PATH }}"
+        $sourcePath = "${{ github.workspace }}\Experts\InverseFVG_Trend_Strategy.mq5"
+        $includePath = "${{ github.workspace }}\include"
+        
+        Write-Host "Compiling EA: $sourcePath"
+        & "$editorPath" /compile:"$sourcePath" /log /inc:"$includePath"
+        
+        # Verify output (compiled to same directory as source)
+        $ex5Path = "${{ github.workspace }}\Experts\InverseFVG_Trend_Strategy.ex5"
+        if (-not (Test-Path $ex5Path)) {
+            Write-Error "❌ Compilation failed: $ex5Path not found"
+            # Show compilation log for debugging
+            if (Test-Path "$env:TEMP\metaeditor.log") {
+                Get-Content "$env:TEMP\metaeditor.log"
+            }
+            exit 1
+        }
+        Write-Host "✅ Successfully compiled: $ex5Path"
+        
+    - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: Compiled_EA
-        path: |
-          MQL5/Experts/*.ex5
-          MQL5/Experts/*.ex4
+        path: ${{ github.workspace }}\Experts\InverseFVG_Trend_Strategy.ex5
