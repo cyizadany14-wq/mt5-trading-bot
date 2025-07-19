@@ -1,4 +1,4 @@
-name: Compile Final EA
+name: Compile EA
 on: [push]
 jobs:
   compile:
@@ -9,7 +9,7 @@ jobs:
         run: |
           "C:\Program Files\MetaTrader 5\metaeditor.exe" /compile:Smartphone_FVG_Bot/Experts/InverseFVG_Final.mq5
       - name: Upload EX5
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # CHANGED FROM v3 TO v4
         with:
           name: InverseFVG_Final.ex5
           path: Smartphone_FVG_Bot/Experts/InverseFVG_Final.ex5
